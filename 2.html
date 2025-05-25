@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>部位HPシミュレーター</title>
+  <style>
+    body {
+      background: #111;
+      color: #eee;
+      font-family: sans-serif;
+      text-align: center;
+    }
+    .body-container {
+      display: grid;
+      grid-template-columns: 100px 100px 100px;
+      grid-template-rows: repeat(5, 80px);
+      gap: 4px;
+      justify-content: center;
+      margin-top: 20px;
+    }
+    .part {
+      border: 1px solid #555;
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+    }
+    .label {
+      font-size: 12px;
+      pointer-events: none;
+    }
+    .hp-setup {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      margin-bottom: 10px;
+    }
+    .hp-setup label {
+      margin: 0 8px;
+      font-size: 12px;
+    }
+    input, button {
+      margin: 4px;
+      padding: 4px;
+    }
+  </style>
+</head>
+<body>
+
+<h2>部位HPシミュレーター</h2>
+
+<div class="hp-setup" id="hp-setup"></div>
+
+<div>
+  <label>ダメージ: <input id="damage" type="number" value="10"></label>
+  <label>防御力: <input id="armor" type="number" value="5"></label>
+  <label>タフネス: <input id="toughness" type="number" value="5"></label>
+  <button onclick="resetHP()">HP更新</button>
+</div>
+
+<div class="body-container" id="body"></div>
+
+<script>
+  const partNames = ["head", "left arm", "body", "right arm", "left leg", "right leg", "left foot", "right foot"];
+  const partDefaults = {
+    "head": 50, "body": 100, "left arm": 60, "right arm": 60,
+    "left leg": 80, "right leg": 80, "left foot": 40, "right foot": 40
+  };
+  const parts = {};
+  const bodyDiv = document.getElementById("body");
+  const setup = document.getElementById("hp-setup");
+
+  partNames.forEach(name => {
+    const input = document.createElement("input");
+    input.type = "number";
+    input.id = `hp-${name}`;
+    input.value = partDefaults[name];
+    input.style.width = "50px";
+    const label = document.createElement("label");
+    label.innerText = name;
+    label.appendChild(input);
+    setup.appendChild(label);
+  });
+
+  const gridMap = {
+    "head": [1, 1],
+    "left arm": [0, 1],
+    "body": [1, 2],
+    "right arm": [2, 1],
+    "left leg": [0, 3],
+    "right leg": [2, 3],
+    "left foot": [0, 4],
+    "right foot": [2, 4]
+  };
+
+  function resetHP() {
+    partNames.forEach(name => {
+      const max = parseInt(document.getElementById(`hp-${name}`).value) || 1;
+      parts[name] = { hp: max, max: max };
+    });
+    renderParts();
+  }
+
+  function renderParts() {
+    bodyDiv.innerHTML = "";
+    partNames.forEach(name => {
+      const p = parts[name];
+      const div = document.createElement("div");
+      div.className = "part";
+      div.id = name;
+      div.dataset.name = name;
+      div.style.gridColumn = gridMap[name][0] + 1;
+      div.style.gridRow = gridMap[name][1] + 1;
+
+      const label = document.createElement("div");
+      label.className = "label";
+      label.innerText = `${name}\n${Math.floor(p.hp * 100) / 100} / ${p.max}`;
+      div.appendChild(label);
+      bodyDiv.appendChild(div);
+    });
+    addTouchHandlers();
+  }
+
+  function calculateReduction(damage, armor, toughness) {
+    const part1 = armor * (1 - 0.04 * damage / (armor + toughness));
+    const part2 = armor * 0.2;
+    return Math.max(part1, part2) / 25;
+  }
+
+  function dealAreaDamage(targetName, centerX, centerY) {
+    const damageBase = parseFloat(document.getElementById("damage").value);
+    const armor = parseFloat(document.getElementById("armor").value);
+    const toughness = parseFloat(document.getElementById("toughness").value);
+
+    partNames.forEach(name => {
+      const div = document.getElementById(name);
+      const rect = div.getBoundingClientRect();
+      const dx = (rect.left + rect.width / 2) - centerX;
+      const dy = (rect.top + rect.height / 2) - centerY;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      const scale = Math.max(0, 1 - dist / 150); // 150px以内の距離でスケーリング
+
+      if (scale > 0.1) {
+        const scaledDamage = damageBase * scale;
+        const reduction = calculateReduction(scaledDamage, armor, toughness);
+        const realDamage = scaledDamage * (1 - reduction);
+        parts[name].hp = Math.max(0, parts[name].hp - realDamage);
+      }
+    });
+    renderParts();
+  }
+
+  function addTouchHandlers() {
+    partNames.forEach(name => {
+      const div = document.getElementById(name);
+      div.onclick = (e) => {
+        dealAreaDamage(name, e.clientX, e.clientY);
+      };
+    });
+  }
+
+  resetHP();
+</script>
+</body>
+</html>
