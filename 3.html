@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<title>First Aid風 部位HPシミュレーター（タッチ判定付き）</title>
+<style>
+  body {
+    background: #111;
+    color: #eee;
+    font-family: sans-serif;
+    text-align: center;
+  }
+  .body-container {
+    display: grid;
+    grid-template-columns: 100px 100px 100px;
+    grid-template-rows: repeat(5, 80px);
+    gap: 4px;
+    justify-content: center;
+    margin-top: 20px;
+    user-select:none;
+  }
+  .part {
+    border: 1px solid #555;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    padding-left: 8px;
+    font-size: 14px;
+    cursor: pointer;
+  }
+  .bar {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 0;
+    transition: background-color 0.3s;
+  }
+  .label {
+    z-index: 1;
+    pointer-events: none;
+    white-space: nowrap;
+  }
+  input, select, button {
+    margin: 5px;
+    padding: 4px;
+  }
+  .hp-setup {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    margin-bottom: 10px;
+  }
+  .hp-setup label {
+    margin: 0 8px;
+    font-size: 12px;
+  }
+</style>
+</head>
+<body>
+
+<h2>部位HPシミュレーター（タッチ判定付き）</h2>
+
+<div class="hp-setup" id="hp-setup"></div>
+
+<div>
+  <label>ダメージ: <input id="damage" type="number" value="10" step="0.01"></label>
+  <label>防御力: <input id="armor" type="number" value="5" step="0.01"></label>
+  <label>タフネス: <input id="toughness" type="number" value="5" step="0.01"></label>
+  <label>攻撃速度: <input id="speed" type="number" value="1" step="0.01" min="0.01"></label>
+  <button onclick="applyDamageToSelected()">選択部位に攻撃</button>
+  <button onclick="toggleAuto()">オートON/OFF</button>
+  <button onclick="resetHP()">HP更新</button>
+</div>
+
+<div class="body-container" id="body"></div>
+
+<script>
+  const partNames = ["head", "left arm", "body", "right arm", "left leg", "right leg", "left foot", "right foot"];
+  const partDefaults = {
+    "head": 50, "body": 100, "left arm": 60, "right arm": 60,
+    "left leg": 80, "right leg": 80, "left foot": 40, "right foot": 40
+  };
+  const parts = {};
+
+  const setup = document.getElementById('hp-setup');
+  const bodyDiv = document.getElementById('body');
+
+  partNames.forEach(name => {
+    const hpInput = document.createElement('input');
+    hpInput.type = 'number';
+    hpInput.id = `hp-${name}`;
+    hpInput.value = partDefaults[name];
+    hpInput.style.width = '50px';
+    hpInput.step = "0.01";
+    hpInput.min = "0.01";
+
+    const label = document.createElement('label');
+    label.innerText = name;
+    label.appendChild(hpInput);
+    setup.appendChild(label);
+  });
+
+  // 部位の表示位置（グリッド）
+  const gridMap = {
+    "head": "2 / 1",
+    "left arm": "1 / 2",
+    "body": "2 / 2",
+    "right arm": "3 / 2",
+    "left leg": "1 / 3",
+    "right leg": "3 / 3",
+    "left foot": "1 / 4",
+    "right foot": "3 / 4"
+  };
+
+  // 部位の中心座標（相対bodyDiv）※後でクリック判定に使う
+  const partCenters = {};
+
+  function resetHP() {
+    partNames.forEach(name => {
+      const max = Math.max(0.01, parseFloat(document.getElementById(`hp-${name}`).value) || 1);
+      parts[name] = { hp: max, max: max };
+    });
+    renderParts();
+  }
+
+  function lerp(a, b, t) {
+    return a + (b - a) * t;
+  }
+
+  function hex(r, g, b) {
+    return "#" + [r, g, b].map(v => {
+      const h = Math.round(v).toString(16);
+      return h.length == 1 ? "0" + h : h;
+    }).join("");
+  }
+
+  function getColor(t) {
+    // t: 0〜1 (HP割合)
+    const stops = [
+      { t: 1.00, color: [0, 255, 0] },    // 緑
+      { t: 0.80, color: [102, 255, 0] },  // 黄緑
+      { t: 0.60, color: [255, 255, 0] },  // 黄
+      { t: 0.40, color: [255, 153, 0] },  // 山吹
+      { t: 0.20, color: [255, 0, 0] },    // 赤
+      { t: 0.00, color: [68, 68, 68] }    // グレー
+    ];
+
+    for (let i = 0; i < stops.length - 1; i++) {
+      const a = stops[i];
+      const b = stops[i + 1];
+      if (t <= a.t && t >= b.t) {
+        const f = (t - b.t) / (a.t - b.t);
+        const r = lerp(a.color[0], b.color[0], f);
+        const g = lerp(a.color[1], b.color[1], f);
+        const b_ = lerp(a.color[2], b.color[2], f);
+        return hex(r, g, b_);
+      }
+    }
+    return "#444";
+  }
+
+  // 部位の描画・中心点取得
+  function renderParts() {
+    bodyDiv.innerHTML = "";
+    for (const name of partNames) {
+      const p = parts[name];
+      const div = document.createElement("div");
+      div.className = "part";
+      div.id = name;
+      div.style.gridColumn = gridMap[name].split(" / ")[0];
+      div.style.gridRow = gridMap[name].split(" / ")[1];
+
+      const bar = document.createElement("div");
+      bar.className = "bar";
+      bar.style.height = "100%";
+      bar.style.backgroundColor = getColor(p.hp / p.max);
+      div.appendChild(bar);
+
+      const label = document.createElement("div");
+      label.className = "label";
+      const displayHp = Math.floor(p.hp * 100) / 100;
+      label.innerText = `${name} ${displayHp.toFixed(2)} / ${p.max}`;
+      div.appendChild(label);
+
+      bodyDiv.appendChild(div);
+    }
+
+    // 位置取得（少し遅延して確実に描画後に）
+    setTimeout(() => {
+      partNames.forEach(name => {
+        const el = document.getElementById(name);
+        const rect = el.getBoundingClientRect();
+        const parentRect = bodyDiv.getBoundingClientRect();
+        // 中心座標をbodyDiv基準で保存
+        partCenters[name] = {
+          x: rect.left + rect.width / 2 - parentRect.left,
+          y: rect.top + rect.height / 2 - parentRect.top,
+          width: rect.width,
+          height: rect.height
+        };
+      });
+    }, 10);
+  }
+
+  // ダメージ軽減率計算（ご指定式）
+  function calculateReduction(damage, armor, toughness) {
+    const part1 = armor * (1 - 0.04 * damage / (armor + toughness));
+    const part2 = armor * 0.2;
+    const reduction = Math.max(part1, part2) / 25;
+    return reduction; // 20超えOKなのでそのまま返す
+  }
+
+  // 指定座標(x,y)を中心に、部位ごとに距離を計算してダメージを分配して与える
+  function damageAtPoint(x, y, damage, armor, toughness) {
+    // 距離によるダメージ減衰設定
+    // 0〜50px: 100%
+    // 50〜100px: 50%
+    // 100〜150px: 20%
+    // 150px以上: 0%
+    for (const name of partNames) {
+      const c = partCenters[name];
+      if (!c) continue;
+      const dx = c.x - x;
+      const dy = c.y - y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      let factor = 0;
+      if (dist <= 50) factor = 1;
+      else if (dist <= 100) factor = 0.5;
+      else if (dist <= 150) factor = 0.2;
+      else factor = 0;
+
+      if (factor > 0 && parts[name].hp > 0) {
+        const reduction = calculateReduction(damage, armor, toughness);
+        const realDamage = damage * (1 - reduction) * factor;
+        parts[name].hp = Math.max(0, parts[name].hp - realDamage);
+      }
+    }
+    renderParts();
+  }
+
+  // クリックイベントでダメージを与える
+  bodyDiv.addEventListener("click", (e) => {
+    const rect = bodyDiv.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    const damage = parseFloat(document.getElementById("damage").value) || 0;
+    const armor = parseFloat(document.getElementById("armor").value) || 0;
+    const toughness = parseFloat(document.getElementById("toughness").value) || 0;
+    damageAtPoint(x, y, damage, armor, toughness);
+  });
+
+  // 選択部位に直接ダメージ
+  function applyDamageToSelected() {
+    const damage = parseFloat(document.getElementById("damage").value) || 0;
+    const armor = parseFloat(document.getElementById("armor").value) || 0;
+    const toughness = parseFloat(document.getElementById("toughness").value) || 0;
+    partNames.forEach(name => {
+      if (parts[name].hp > 0) {
+        const reduction = calculateReduction(damage, armor, toughness);
+        const realDamage = damage * (1 - reduction);
+        parts[name].hp = Math.max(0, parts[name].hp - realDamage);
+      }
+    });
+    renderParts();
+  }
+
+  let autoInterval = null;
+  function toggleAuto() {
+    if (autoInterval) {
+      clearInterval(autoInterval);
+      autoInterval = null;
+    } else {
+      autoInterval = setInterval(() => {
+        // 画面中心にダメージ
+        const centerX = bodyDiv.clientWidth / 2;
+        const centerY = bodyDiv.clientHeight / 2;
+        const damage = parseFloat(document.getElementById("damage").value) || 0;
+        const armor = parseFloat(document.getElementById("armor").value) || 0;
+        const toughness = parseFloat(document.getElementById("toughness").value) || 0;
+        damageAtPoint(centerX, centerY, damage, armor, toughness);
+      }, 1000);
+    }
+  }
+
+  resetHP();
+</script>
+
+</body>
+</html>
