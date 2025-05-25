@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>First Aid風 部位HPシミュレーター</title>
+  <style>
+    body {
+      background: #111;
+      color: #eee;
+      font-family: sans-serif;
+      text-align: center;
+    }
+    .body-container {
+      display: grid;
+      grid-template-columns: 100px 100px 100px;
+      grid-template-rows: repeat(5, 80px);
+      gap: 4px;
+      justify-content: center;
+      margin-top: 20px;
+    }
+    .part {
+      border: 1px solid #555;
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .bar {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      width: 100%;
+      z-index: 0;
+      transition: background-color 0.3s;
+    }
+    .label {
+      z-index: 1;
+      font-size: 12px;
+      white-space: pre;
+      pointer-events: none;
+    }
+    input, select, button {
+      margin: 5px;
+      padding: 4px;
+    }
+    .hp-setup {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      margin-bottom: 10px;
+    }
+    .hp-setup label {
+      margin: 0 8px;
+      font-size: 12px;
+    }
+  </style>
+</head>
+<body>
+
+<h2>部位HPシミュレーター</h2>
+
+<div class="hp-setup" id="hp-setup"></div>
+
+<div>
+  <label>ダメージ: <input id="damage" type="number" value="10"></label>
+  <label>防御力: <input id="armor" type="number" value="5"></label>
+  <label>タフネス: <input id="toughness" type="number" value="5"></label>
+  <label>攻撃速度: <input id="speed" type="number" value="1"></label>
+  <select id="target">
+    <option>left leg</option>
+    <option>right leg</option>
+    <option>left foot</option>
+    <option>right foot</option>
+    <option>left arm</option>
+    <option>right arm</option>
+    <option>body</option>
+    <option>head</option>
+  </select>
+  <button onclick="applyDamage()">攻撃</button>
+  <button onclick="toggleAuto()">オートON/OFF</button>
+  <button onclick="resetHP()">HP更新</button>
+</div>
+
+<div class="body-container" id="body"></div>
+
+<script>
+  const partNames = ["head", "left arm", "body", "right arm", "left leg", "right leg", "left foot", "right foot"];
+  const partDefaults = {
+    "head": 50, "body": 100, "left arm": 60, "right arm": 60,
+    "left leg": 80, "right leg": 80, "left foot": 40, "right foot": 40
+  };
+  const parts = {};
+
+  const setup = document.getElementById('hp-setup');
+  const bodyDiv = document.getElementById('body');
+
+  partNames.forEach(name => {
+    const hpInput = document.createElement('input');
+    hpInput.type = 'number';
+    hpInput.id = `hp-${name}`;
+    hpInput.value = partDefaults[name];
+    hpInput.style.width = '50px';
+
+    const label = document.createElement('label');
+    label.innerText = name;
+    label.appendChild(hpInput);
+    setup.appendChild(label);
+  });
+
+  function resetHP() {
+    partNames.forEach(name => {
+      const max = parseInt(document.getElementById(`hp-${name}`).value) || 1;
+      parts[name] = { hp: max, max: max };
+    });
+    renderParts();
+  }
+
+  function lerp(a, b, t) {
+    return a + (b - a) * t;
+  }
+
+  function hex(r, g, b) {
+    return "#" + [r, g, b].map(v => {
+      const h = Math.round(v).toString(16);
+      return h.length == 1 ? "0" + h : h;
+    }).join("");
+  }
+
+  function getColor(t) {
+    const stops = [
+      { t: 1.00, color: [0, 255, 0] },    // 緑
+      { t: 0.80, color: [102, 255, 0] },  // 黄緑
+      { t: 0.60, color: [255, 255, 0] },  // 黄
+      { t: 0.40, color: [255, 153, 0] },  // 山吹
+      { t: 0.20, color: [255, 0, 0] },    // 赤
+      { t: 0.00, color: [68, 68, 68] }    // グレー
+    ];
+
+    for (let i = 0; i < stops.length - 1; i++) {
+      const a = stops[i];
+      const b = stops[i + 1];
+      if (t <= a.t && t >= b.t) {
+        const f = (t - b.t) / (a.t - b.t);
+        const r = lerp(a.color[0], b.color[0], f);
+        const g = lerp(a.color[1], b.color[1], f);
+        const b_ = lerp(a.color[2], b.color[2], f);
+        return hex(r, g, b_);
+      }
+    }
+    return "#444";
+  }
+
+  function renderParts() {
+    bodyDiv.innerHTML = "";
+    const gridMap = {
+      "head": "2 / 1",
+      "left arm": "1 / 2",
+      "body": "2 / 2",
+      "right arm": "3 / 2",
+      "left leg": "1 / 3",
+      "right leg": "3 / 3",
+      "left foot": "1 / 4",
+      "right foot": "3 / 4"
+    };
+    partNames.forEach(name => {
+      const p = parts[name];
+      const div = document.createElement("div");
+      div.className = "part";
+      div.id = name;
+      div.style.gridColumn = gridMap[name].split(" / ")[0];
+      div.style.gridRow = gridMap[name].split(" / ")[1];
+
+      const bar = document.createElement("div");
+      bar.className = "bar";
+      const ratio = p.hp / p.max;
+      bar.style.height = `${ratio * 100}%`;
+      bar.style.backgroundColor = getColor(ratio);
+      div.appendChild(bar);
+
+      const label = document.createElement("div");
+      label.className = "label";
+      label.innerText = `${name}\n${Math.round(p.hp)} / ${p.max}`;
+      div.appendChild(label);
+
+      bodyDiv.appendChild(div);
+    });
+  }
+
+  function calculateReduction(damage, armor, toughness) {
+    const part1 = armor * (1 - 0.04 * damage / (armor + toughness));
+    const part2 = armor * 0.2;
+    const reduction = Math.max(part1, part2) / 25;
+    return Math.min(1, reduction);
+  }
+
+  function applyDamage() {
+    const damage = parseFloat(document.getElementById("damage").value);
+    const armor = parseFloat(document.getElementById("armor").value);
+    const toughness = parseFloat(document.getElementById("toughness").value);
+    const target = document.getElementById("target").value;
+
+    const reduction = calculateReduction(damage, armor, toughness);
+    const realDamage = damage * (1 - reduction);
+
+    parts[target].hp = Math.max(0, parts[target].hp - realDamage);
+    renderParts();
+  }
+
+  let interval = null;
+  function toggleAuto() {
+    if (interval) {
+      clearInterval(interval);
+      interval = null;
+    } else {
+      const speed = parseFloat(document.getElementById("speed").value);
+      interval = setInterval(applyDamage, 1000 / speed);
+    }
+  }
+
+  resetHP();
+</script>
+</body>
+</html>
