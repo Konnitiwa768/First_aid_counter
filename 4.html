@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>HPカウンタデモ</title>
+<style>
+body {
+  background: #111;
+  color: #eee;
+  font-family: sans-serif;
+  text-align: center;
+}
+.body-container {
+  display: grid;
+  grid-template-columns: 100px 100px 100px;
+  grid-template-rows: repeat(5, 80px);
+  gap: 4px;
+  justify-content: center;
+  margin: 10px 0;
+  user-select: none;
+}
+.part {
+  border: 1px solid #555;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  padding-left: 6px;
+  font-size: 14px;
+  cursor: pointer;
+}
+.bar {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 0;
+  transition: background-color 0.3s;
+}
+.label {
+  z-index: 1;
+  pointer-events: none;
+  white-space: nowrap;
+}
+.counter-box {
+  border: 1px solid #666;
+  padding: 6px;
+  margin: 10px auto;
+  width: max-content;
+}
+button,input {
+  margin: 4px;
+  padding: 4px 6px;
+}
+</style>
+</head>
+<body>
+
+<h2>HPカウンタデモ（Hpcounter.js 単体版）</h2>
+
+<div>
+  <label>ダメージ: <input type="number" id="damage" value="10" step="0.01"></label>
+  <button id="add">HPカウンタ追加</button>
+</div>
+
+<div id="list"></div>
+
+<script type="module">
+// Hpcounter.js をここに直接書くか、別ファイルを import してください
+import { Hpcounter } from "./Hpcounter.js";
+
+const defaultParts={
+  "head":{hp:50,max:50,armor:3,toughness:1},
+  "body":{hp:100,max:100,armor:4,toughness:3},
+  "left arm":{hp:60,max:60,armor:2,toughness:1},
+  "right arm":{hp:60,max:60,armor:2,toughness:1},
+  "left leg":{hp:80,max:80,armor:3,toughness:1},
+  "right leg":{hp:80,max:80,armor:3,toughness:1},
+  "left foot":{hp:40,max:40,armor:1,toughness:0},
+  "right foot":{hp:40,max:40,armor:1,toughness:0}
+};
+
+const list=document.getElementById("list");
+const counters=[];
+
+document.getElementById("add").onclick=()=>{
+  const box=document.createElement("div");
+  box.className="counter-box";
+
+  const body=document.createElement("div");
+  body.className="body-container";
+  box.appendChild(body);
+
+  const btnReset=document.createElement("button"); btnReset.innerText="リセット";
+  const btnDirect=document.createElement("button"); btnDirect.innerText="直撃";
+  const btnAuto=document.createElement("button"); btnAuto.innerText="オートON/OFF";
+  const btnDel=document.createElement("button"); btnDel.innerText="削除";
+
+  box.append(btnReset, btnDirect, btnAuto, btnDel);
+  list.appendChild(box);
+
+  const cp = new Hpcounter(body, defaultParts);
+  counters.push(cp);
+
+  btnReset.onclick = ()=>cp.reset();
+  btnDirect.onclick = ()=>cp.applyDamageDirect();
+  btnAuto.onclick = ()=>cp.toggleAuto(1000);
+  btnDel.onclick = ()=>{
+    cp.destroy();
+    list.removeChild(box);
+  };
+};
+</script>
+
+</body>
+</html>
