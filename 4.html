@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<title>HPカウンタデモ</title>
+<title>HPカウンタ編集可能デモ</title>
 <style>
 body {
   background: #111;
@@ -49,6 +49,16 @@ body {
   margin: 10px auto;
   width: max-content;
 }
+.part-settings {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+.part-settings label {
+  font-size: 12px;
+}
 button,input {
   margin: 4px;
   padding: 4px 6px;
@@ -57,7 +67,7 @@ button,input {
 </head>
 <body>
 
-<h2>HPカウンタデモ（Hpcounter.js 単体版）</h2>
+<h2>HPカウンタ編集可能デモ</h2>
 
 <div>
   <label>ダメージ: <input type="number" id="damage" value="10" step="0.01"></label>
@@ -67,7 +77,6 @@ button,input {
 <div id="list"></div>
 
 <script type="module">
-// Hpcounter.js をここに直接書くか、別ファイルを import してください
 import { Hpcounter } from "./Hpcounter.js";
 
 const defaultParts={
@@ -88,25 +97,70 @@ document.getElementById("add").onclick=()=>{
   const box=document.createElement("div");
   box.className="counter-box";
 
+  // 部位設定UI
+  const settings=document.createElement("div");
+  settings.className="part-settings";
+
+  const inputs={};
+  for(const name in defaultParts){
+    const p=defaultParts[name];
+    const label=document.createElement("label");
+    label.innerHTML=`
+      ${name} 
+      HP:<input type="number" step="0.1" value="${p.hp}" style="width:50px">
+      Max:<input type="number" step="0.1" value="${p.max}" style="width:50px">
+      Armor:<input type="number" step="0.1" value="${p.armor}" style="width:50px">
+      Toughness:<input type="number" step="0.1" value="${p.toughness}" style="width:50px">
+    `;
+    settings.appendChild(label);
+    inputs[name]=label.querySelectorAll("input");
+  }
+
+  box.appendChild(settings);
+
+  // 部位描画
   const body=document.createElement("div");
   body.className="body-container";
   box.appendChild(body);
 
+  // 操作ボタン
   const btnReset=document.createElement("button"); btnReset.innerText="リセット";
   const btnDirect=document.createElement("button"); btnDirect.innerText="直撃";
   const btnAuto=document.createElement("button"); btnAuto.innerText="オートON/OFF";
   const btnDel=document.createElement("button"); btnDel.innerText="削除";
-
   box.append(btnReset, btnDirect, btnAuto, btnDel);
+
   list.appendChild(box);
 
-  const cp = new Hpcounter(body, defaultParts);
+  // 部位設定から Hpcounter 作成
+  const partsData={};
+  for(const name in inputs){
+    const [hp,max,armor,toughness]=inputs[name];
+    partsData[name]={
+      hp:parseFloat(hp.value),
+      max:parseFloat(max.value),
+      armor:parseFloat(armor.value),
+      toughness:parseFloat(toughness.value)
+    };
+    // 入力変更で自動更新
+    [hp,max,armor,toughness].forEach(input=>{
+      input.oninput=()=> {
+        partsData[name].hp=parseFloat(hp.value);
+        partsData[name].max=parseFloat(max.value);
+        partsData[name].armor=parseFloat(armor.value);
+        partsData[name].toughness=parseFloat(toughness.value);
+        cp.render();
+      };
+    });
+  }
+
+  const cp=new Hpcounter(body,partsData);
   counters.push(cp);
 
-  btnReset.onclick = ()=>cp.reset();
-  btnDirect.onclick = ()=>cp.applyDamageDirect();
-  btnAuto.onclick = ()=>cp.toggleAuto(1000);
-  btnDel.onclick = ()=>{
+  btnReset.onclick=()=>cp.reset();
+  btnDirect.onclick=()=>cp.applyDamageDirect();
+  btnAuto.onclick=()=>cp.toggleAuto(1000);
+  btnDel.onclick=()=>{
     cp.destroy();
     list.removeChild(box);
   };
